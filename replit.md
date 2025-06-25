@@ -112,8 +112,9 @@ MoveEasy is a full-stack web application for booking moving services. It provide
 - Migration command: `npm run db:push`
 - Schema defined in shared/schema.ts
 
-## Changelog
-- June 25, 2025. Initial setup
+## Recent Changes
+- June 25, 2025: Enhanced booking form with Greek location autocomplete, floor/parking/elevator details, room-based item selection, and enhanced phone number validation
+- June 25, 2025: Initial setup
 
 ## User Preferences
 

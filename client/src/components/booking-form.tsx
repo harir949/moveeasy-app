@@ -9,11 +9,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ArrowLeft, ArrowRight, CalendarCheck, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarCheck, Check, Building, Car, MoveUp } from "lucide-react";
 import { CalendarComponent } from "./calendar-component";
 import { PhotoUpload } from "./photo-upload";
+import { LocationAutocomplete } from "./location-autocomplete";
+import { LocationMap } from "./location-map";
+import { RoomItemsSelector } from "./room-items-selector";
 import { insertBookingSchema } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import type { z } from "zod";
@@ -22,7 +26,7 @@ type FormData = z.infer<typeof insertBookingSchema>;
 
 const steps = [
   { id: 1, title: "Contact Info", description: "We'll use this information to contact you about your move." },
-  { id: 2, title: "Move Details", description: "Tell us about your moving requirements." },
+  { id: 2, title: "Move Details", description: "Tell us about your locations, items, and requirements." },
   { id: 3, title: "Photos", description: "Help us provide an accurate estimate by uploading photos of your items and rooms." },
   { id: 4, title: "Schedule", description: "Select your preferred moving date. We'll call you to confirm the exact time." }
 ];
@@ -36,11 +40,20 @@ export function BookingForm() {
     resolver: zodResolver(insertBookingSchema),
     defaultValues: {
       fullName: "",
+      countryCode: "+30",
       phoneNumber: "",
       email: "",
       startLocation: "",
       endLocation: "",
+      pickupFloor: "",
+      dropoffFloor: "",
+      pickupParking: false,
+      dropoffParking: false,
+      pickupElevator: false,
+      dropoffElevator: false,
       moveType: "",
+      customMoveType: "",
+      selectedRooms: {},
       itemsDescription: "",
       homeSize: "",
       specialRequirements: "",
@@ -104,7 +117,7 @@ export function BookingForm() {
         fieldsToValidate.push("fullName", "phoneNumber");
         break;
       case 2:
-        fieldsToValidate.push("startLocation", "endLocation", "moveType", "itemsDescription");
+        fieldsToValidate.push("startLocation", "endLocation", "moveType");
         break;
       case 3:
         // Photos are optional, no validation needed
@@ -178,34 +191,67 @@ export function BookingForm() {
                     <p className="text-gray-600">{steps[0].description}</p>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField
-                      control={form.control}
-                      name="fullName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Full Name *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter your full name" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="phoneNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Phone Number *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="(123) 456-7890" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <FormField
+                    control={form.control}
+                    name="fullName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Full Name *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Enter your full name" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  <div className="space-y-3">
+                    <Label>Phone Number *</Label>
+                    <div className="flex space-x-3">
+                      <FormField
+                        control={form.control}
+                        name="countryCode"
+                        render={({ field }) => (
+                          <FormItem className="w-32">
+                            <FormControl>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="+30">🇬🇷 +30</SelectItem>
+                                  <SelectItem value="+1">🇺🇸 +1</SelectItem>
+                                  <SelectItem value="+44">🇬🇧 +44</SelectItem>
+                                  <SelectItem value="+49">🇩🇪 +49</SelectItem>
+                                  <SelectItem value="+33">🇫🇷 +33</SelectItem>
+                                  <SelectItem value="+39">🇮🇹 +39</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="phoneNumber"
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input 
+                                placeholder="2101234567"
+                                {...field}
+                                onChange={(e) => {
+                                  // Only allow digits
+                                  const value = e.target.value.replace(/\D/g, '');
+                                  field.onChange(value);
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
                   
                   <FormField
@@ -232,6 +278,7 @@ export function BookingForm() {
                     <p className="text-gray-600">{steps[1].description}</p>
                   </div>
                   
+                  {/* Locations */}
                   <FormField
                     control={form.control}
                     name="startLocation"
@@ -239,7 +286,16 @@ export function BookingForm() {
                       <FormItem>
                         <FormLabel>Pick-up Location *</FormLabel>
                         <FormControl>
-                          <Input placeholder="Enter your current address" {...field} />
+                          <LocationAutocomplete
+                            value={field.value}
+                            onChange={(location, coords) => {
+                              field.onChange(location);
+                              if (coords) {
+                                form.setValue("startLocationCoords", coords);
+                              }
+                            }}
+                            placeholder="Start typing your pick-up address..."
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -253,13 +309,186 @@ export function BookingForm() {
                       <FormItem>
                         <FormLabel>Drop-off Location *</FormLabel>
                         <FormControl>
-                          <Input placeholder="Enter your destination address" {...field} />
+                          <LocationAutocomplete
+                            value={field.value}
+                            onChange={(location, coords) => {
+                              field.onChange(location);
+                              if (coords) {
+                                form.setValue("endLocationCoords", coords);
+                              }
+                            }}
+                            placeholder="Start typing your drop-off address..."
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  {/* Map Display */}
+                  <LocationMap
+                    startLocation={form.watch("startLocation")}
+                    endLocation={form.watch("endLocation")}
+                    startCoords={form.watch("startLocationCoords")}
+                    endCoords={form.watch("endLocationCoords")}
+                  />
+
+                  {/* Location Details */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <h4 className="font-medium text-gray-900 flex items-center">
+                        <Building className="h-4 w-4 mr-2" />
+                        Pick-up Details
+                      </h4>
+                      
+                      <FormField
+                        control={form.control}
+                        name="pickupFloor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Floor</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select floor" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="ground">Ground Floor</SelectItem>
+                                <SelectItem value="1">1st Floor</SelectItem>
+                                <SelectItem value="2">2nd Floor</SelectItem>
+                                <SelectItem value="3">3rd Floor</SelectItem>
+                                <SelectItem value="4">4th Floor</SelectItem>
+                                <SelectItem value="5+">5th Floor or Higher</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <div className="space-y-3">
+                        <FormField
+                          control={form.control}
+                          name="pickupParking"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                              <div className="space-y-1 leading-none">
+                                <FormLabel className="flex items-center">
+                                  <Car className="h-4 w-4 mr-2" />
+                                  Parking available nearby
+                                </FormLabel>
+                              </div>
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="pickupElevator"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                              <div className="space-y-1 leading-none">
+                                <FormLabel className="flex items-center">
+                                  <Elevator className="h-4 w-4 mr-2" />
+                                  Elevator available
+                                </FormLabel>
+                              </div>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="font-medium text-gray-900 flex items-center">
+                        <Building className="h-4 w-4 mr-2" />
+                        Drop-off Details
+                      </h4>
+                      
+                      <FormField
+                        control={form.control}
+                        name="dropoffFloor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Floor</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select floor" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="ground">Ground Floor</SelectItem>
+                                <SelectItem value="1">1st Floor</SelectItem>
+                                <SelectItem value="2">2nd Floor</SelectItem>
+                                <SelectItem value="3">3rd Floor</SelectItem>
+                                <SelectItem value="4">4th Floor</SelectItem>
+                                <SelectItem value="5+">5th Floor or Higher</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <div className="space-y-3">
+                        <FormField
+                          control={form.control}
+                          name="dropoffParking"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                              <div className="space-y-1 leading-none">
+                                <FormLabel className="flex items-center">
+                                  <Car className="h-4 w-4 mr-2" />
+                                  Parking available nearby
+                                </FormLabel>
+                              </div>
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="dropoffElevator"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                              <FormControl>
+                                <Checkbox
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                              <div className="space-y-1 leading-none">
+                                <FormLabel className="flex items-center">
+                                  <Elevator className="h-4 w-4 mr-2" />
+                                  Elevator available
+                                </FormLabel>
+                              </div>
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  </div>
                   
+                  {/* Move Type */}
                   <FormField
                     control={form.control}
                     name="moveType"
@@ -278,24 +507,49 @@ export function BookingForm() {
                             <SelectItem value="storage">Storage Move</SelectItem>
                             <SelectItem value="local">Local Move</SelectItem>
                             <SelectItem value="long-distance">Long Distance Move</SelectItem>
+                            <SelectItem value="other">Other (specify below)</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  
+
+                  {/* Custom Move Type */}
+                  {form.watch("moveType") === "other" && (
+                    <FormField
+                      control={form.control}
+                      name="customMoveType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Specify Move Type</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Please describe your specific moving needs..." {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  {/* Room-based Item Selection */}
+                  <RoomItemsSelector
+                    form={form}
+                    fieldName="selectedRooms"
+                  />
+
+                  {/* Additional Description */}
                   <FormField
                     control={form.control}
                     name="itemsDescription"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Items to Move *</FormLabel>
+                        <FormLabel>Additional Items or Notes</FormLabel>
                         <FormControl>
                           <Textarea 
-                            placeholder="Describe what you need to move (furniture, boxes, appliances, etc.)"
+                            placeholder="Any additional items not listed above or special handling instructions..."
                             className="resize-none"
-                            rows={4}
+                            rows={3}
                             {...field} 
                           />
                         </FormControl>
@@ -338,7 +592,7 @@ export function BookingForm() {
                         <FormItem>
                           <FormLabel>Special Requirements</FormLabel>
                           <FormControl>
-                            <Input placeholder="Fragile items, stairs, etc." {...field} />
+                            <Input placeholder="Fragile items, assembly/disassembly, etc." {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
