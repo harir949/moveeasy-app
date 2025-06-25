@@ -36,7 +36,11 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
 
     // Cancel previous request
     if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
+      try {
+        abortControllerRef.current.abort();
+      } catch (error) {
+        // Ignore abort errors when cancelling previous requests
+      }
     }
 
     abortControllerRef.current = new AbortController();
@@ -77,12 +81,14 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
             allResults = [...allResults, ...results];
           }
         } catch (queryError) {
-          // Continue with next query if one fails
-          console.warn('Query failed:', query, queryError);
+          // Continue with next query if one fails (ignore abort errors)
+          if (queryError instanceof Error && queryError.name !== 'AbortError') {
+            console.warn('Query failed:', query, queryError);
+          }
         }
 
-        // Add small delay between requests to be respectful to the API
-        if (searchQueries.indexOf(query) < searchQueries.length - 1) {
+        // Small delay between requests (only if not aborted)
+        if (searchQueries.indexOf(query) < searchQueries.length - 1 && !abortControllerRef.current?.signal.aborted) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
@@ -97,7 +103,7 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
         .sort((a, b) => b.importance - a.importance)
         .slice(0, 10); // Limit final results
 
-      console.log('Search results for:', input, sortedResults);
+      // console.log('Search results for:', input, sortedResults); // Commented out debug logging
 
       setSuggestions(sortedResults);
       setShowSuggestions(true);
@@ -121,7 +127,11 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
     return () => {
       clearTimeout(timeoutId);
       if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+        try {
+          abortControllerRef.current.abort();
+        } catch (error) {
+          // Ignore abort errors during cleanup
+        }
       }
     };
   }, [value, searchPlaces]);
