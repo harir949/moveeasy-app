@@ -1,4 +1,5 @@
 import { users, bookings, type User, type InsertUser, type Booking, type InsertBooking } from "@shared/schema";
+import { FirebaseStorage } from "./firebase-storage";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -92,4 +93,7 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Choose storage implementation based on environment
+export const storage = process.env.USE_FIREBASE === 'true' 
+  ? new FirebaseStorage() 
+  : new MemStorage();
