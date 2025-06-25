@@ -1,5 +1,6 @@
-import { MapPin, Navigation } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 interface LocationMapProps {
   startLocation: string;
@@ -8,83 +9,230 @@ interface LocationMapProps {
   endCoords?: { lat: number; lng: number };
 }
 
+// Fix for default markers in Leaflet with Vite
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
 export function LocationMap({ startLocation, endLocation, startCoords, endCoords }: LocationMapProps) {
-  // Mock map - In production, integrate with Google Maps or similar service
-  const calculateDistance = () => {
-    if (startCoords && endCoords) {
-      // Simple distance calculation (not accurate for real use)
-      const dx = startCoords.lat - endCoords.lat;
-      const dy = startCoords.lng - endCoords.lng;
-      const distance = Math.sqrt(dx * dx + dy * dy) * 100; // Mock distance in km
-      return Math.round(distance);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const routeControlRef = useRef<any>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    try {
+      // Initialize map centered on Athens, Greece
+      const map = L.map(mapRef.current, {
+        center: [37.9838, 23.7275],
+        zoom: 10,
+        zoomControl: true,
+      });
+
+      // Add OpenStreetMap tiles
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
+      }).addTo(map);
+
+      mapInstanceRef.current = map;
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Failed to initialize map:', err);
+      setError('Failed to load map');
+      setIsLoading(false);
     }
-    return null;
+
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+
+    const map = mapInstanceRef.current;
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => map.removeLayer(marker));
+    markersRef.current = [];
+
+    // Clear existing route
+    if (routeControlRef.current) {
+      map.removeControl(routeControlRef.current);
+      routeControlRef.current = null;
+    }
+
+    const markers: L.Marker[] = [];
+    const bounds = L.latLngBounds([]);
+
+    // Add start marker
+    if (startCoords) {
+      const startIcon = L.divIcon({
+        html: '<div style="background: #22c55e; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+        className: 'custom-marker'
+      });
+
+      const startMarker = L.marker([startCoords.lat, startCoords.lng], { 
+        icon: startIcon 
+      }).addTo(map);
+      
+      startMarker.bindPopup(`<strong>Pick-up:</strong><br>${startLocation}`);
+      markers.push(startMarker);
+      bounds.extend([startCoords.lat, startCoords.lng]);
+    }
+
+    // Add end marker
+    if (endCoords) {
+      const endIcon = L.divIcon({
+        html: '<div style="background: #ef4444; width: 20px; height: 20px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+        className: 'custom-marker'
+      });
+
+      const endMarker = L.marker([endCoords.lat, endCoords.lng], { 
+        icon: endIcon 
+      }).addTo(map);
+      
+      endMarker.bindPopup(`<strong>Drop-off:</strong><br>${endLocation}`);
+      markers.push(endMarker);
+      bounds.extend([endCoords.lat, endCoords.lng]);
+    }
+
+    markersRef.current = markers;
+
+    // If we have both coordinates, try to show a route
+    if (startCoords && endCoords) {
+      fetchRoute(startCoords, endCoords, map);
+    }
+
+    // Fit map to show all markers
+    if (markers.length > 0) {
+      if (markers.length === 1) {
+        map.setView([markers[0].getLatLng().lat, markers[0].getLatLng().lng], 15);
+      } else {
+        map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    }
+  }, [startLocation, endLocation, startCoords, endCoords]);
+
+  const fetchRoute = async (start: { lat: number; lng: number }, end: { lat: number; lng: number }, map: L.Map) => {
+    try {
+      // Use OpenRouteService API (free with rate limits)
+      const response = await fetch(
+        `https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf6248d3c1d36c6c574aa1bbf04d63bb0fb0cf&start=${start.lng},${start.lat}&end=${end.lng},${end.lat}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.features && data.features[0]) {
+          const coordinates = data.features[0].geometry.coordinates;
+          const latLngs = coordinates.map((coord: [number, number]) => [coord[1], coord[0]]);
+          
+          const polyline = L.polyline(latLngs, {
+            color: '#3b82f6',
+            weight: 4,
+            opacity: 0.8
+          }).addTo(map);
+
+          // Add distance and duration info
+          const summary = data.features[0].properties.summary;
+          const distance = (summary.distance / 1000).toFixed(1);
+          const duration = Math.round(summary.duration / 60);
+
+          const routeInfo = L.control({ position: 'topright' });
+          routeInfo.onAdd = () => {
+            const div = L.DomUtil.create('div', 'route-info');
+            div.style.background = 'white';
+            div.style.padding = '8px';
+            div.style.borderRadius = '4px';
+            div.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+            div.innerHTML = `
+              <div style="font-size: 12px; font-weight: bold;">Route Info</div>
+              <div style="font-size: 11px;">Distance: ${distance} km</div>
+              <div style="font-size: 11px;">Duration: ~${duration} min</div>
+            `;
+            return div;
+          };
+          routeInfo.addTo(map);
+        }
+      } else {
+        // Fallback: draw a simple straight line
+        const straightLine = L.polyline([
+          [start.lat, start.lng],
+          [end.lat, end.lng]
+        ], {
+          color: '#94a3b8',
+          weight: 2,
+          opacity: 0.6,
+          dashArray: '5, 10'
+        }).addTo(map);
+      }
+    } catch (error) {
+      console.error('Error fetching route:', error);
+      // Draw straight line as fallback
+      const straightLine = L.polyline([
+        [start.lat, start.lng],
+        [end.lat, end.lng]
+      ], {
+        color: '#94a3b8',
+        weight: 2,
+        opacity: 0.6,
+        dashArray: '5, 10'
+      }).addTo(map);
+    }
   };
 
-  const distance = calculateDistance();
-
-  if (!startLocation || !endLocation) {
-    return null;
+  if (error) {
+    return (
+      <div className="w-full h-64 bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center">
+        <div className="text-center text-gray-600">
+          <div className="mb-2">🗺️ Route Preview</div>
+          <div className="text-sm">
+            <div className="font-semibold text-green-600">📍 From: {startLocation || 'Pick-up location'}</div>
+            <div className="my-1">↓</div>
+            <div className="font-semibold text-red-600">📍 To: {endLocation || 'Drop-off location'}</div>
+          </div>
+          <div className="text-xs text-red-600 mt-2">
+            {error}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <Card className="border-primary/20">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center">
-          <Navigation className="h-5 w-5 mr-2 text-primary" />
-          Route Overview
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* Mock Map Placeholder */}
-          <div className="w-full h-40 bg-gray-100 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300">
-            <div className="text-center text-gray-500">
-              <MapPin className="h-8 w-8 mx-auto mb-2" />
-              <p className="text-sm">Map visualization</p>
-              <p className="text-xs">(Google Maps integration)</p>
-            </div>
+    <div className="w-full h-64 relative rounded-lg overflow-hidden border">
+      {isLoading && (
+        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
+            <div className="text-sm text-gray-600">Loading map...</div>
           </div>
-
-          {/* Route Details */}
-          <div className="space-y-3">
-            <div className="flex items-start space-x-3 p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="w-3 h-3 rounded-full bg-green-500 mt-1 flex-shrink-0"></div>
-              <div className="flex-1">
-                <div className="font-medium text-green-800">Pick-up Location</div>
-                <div className="text-sm text-green-700">{startLocation}</div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center py-2">
-              <div className="flex-1 border-t border-dashed border-gray-300"></div>
-              <div className="px-3 text-xs text-gray-500 bg-white">
-                {distance ? `~${distance} km` : "Route"}
-              </div>
-              <div className="flex-1 border-t border-dashed border-gray-300"></div>
-            </div>
-
-            <div className="flex items-start space-x-3 p-3 bg-red-50 rounded-lg border border-red-200">
-              <div className="w-3 h-3 rounded-full bg-red-500 mt-1 flex-shrink-0"></div>
-              <div className="flex-1">
-                <div className="font-medium text-red-800">Drop-off Location</div>
-                <div className="text-sm text-red-700">{endLocation}</div>
-              </div>
-            </div>
-          </div>
-
-          {distance && (
-            <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-sm text-blue-800">
-                <strong>Estimated Distance:</strong> {distance} km
-              </div>
-              <div className="text-xs text-blue-600 mt-1">
-                Final pricing will be calculated based on actual route and services
-              </div>
-            </div>
-          )}
         </div>
-      </CardContent>
-    </Card>
+      )}
+      <div ref={mapRef} className="w-full h-full" />
+      {!startLocation && !endLocation && (
+        <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center">
+          <div className="text-center text-gray-500">
+            <div className="mb-2">🗺️</div>
+            <div className="text-sm">Enter pickup and dropoff locations to see route</div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
