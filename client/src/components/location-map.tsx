@@ -215,7 +215,7 @@ export function LocationMap({ startLocation, endLocation, startCoords, endCoords
   }
 
   return (
-    <div className="w-full h-64 relative rounded-lg overflow-hidden border">
+    <div className="w-full h-64 relative rounded-lg overflow-hidden border z-10">
       {isLoading && (
         <div className="absolute inset-0 bg-gray-100 flex items-center justify-center z-50">
           <div className="text-center">

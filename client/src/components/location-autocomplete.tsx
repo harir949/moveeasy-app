@@ -201,7 +201,7 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
       )}
       
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
+        <div className="absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
           {suggestions.map((suggestion, index) => (
             <div
               key={suggestion.place_id}
@@ -224,7 +224,7 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
       )}
       
       {value.length > 2 && !isLoading && suggestions.length === 0 && showSuggestions && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-3">
+        <div className="absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-3">
           <div className="text-sm text-gray-600">
             No locations found. Try a different search term.
           </div>
