@@ -155,7 +155,10 @@ export function LocationMap({ startLocation, endLocation, startCoords, endCoords
             'Accept': 'application/json'
           }
         }
-      ).catch(() => null); // Return null on fetch error
+      ).catch(error => {
+        // Silently handle all fetch errors including network, CORS, and abort
+        return null;
+      });
 
       clearTimeout(timeoutId);
 
