@@ -401,7 +401,7 @@ export function BookingForm() {
                               </FormControl>
                               <div className="space-y-1 leading-none">
                                 <FormLabel className="flex items-center">
-                                  <Elevator className="h-4 w-4 mr-2" />
+                                  <MoveUp className="h-4 w-4 mr-2" />
                                   Elevator available
                                 </FormLabel>
                               </div>
@@ -477,7 +477,7 @@ export function BookingForm() {
                               </FormControl>
                               <div className="space-y-1 leading-none">
                                 <FormLabel className="flex items-center">
-                                  <Elevator className="h-4 w-4 mr-2" />
+                                  <MoveUp className="h-4 w-4 mr-2" />
                                   Elevator available
                                 </FormLabel>
                               </div>
