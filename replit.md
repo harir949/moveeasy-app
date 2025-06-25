@@ -113,6 +113,7 @@ MoveEasy is a full-stack web application for booking moving services. It provide
 - Schema defined in shared/schema.ts
 
 ## Recent Changes
+- June 25, 2025: Fixed autocomplete dropdown z-index issues and abort controller errors for smoother user experience
 - June 25, 2025: Replaced Google Maps with free OpenStreetMap + Leaflet integration for street-level address autocomplete and route visualization
 - June 25, 2025: Added Firebase Firestore database integration (requires credentials)
 - June 25, 2025: Enhanced booking form with Greek location autocomplete, floor/parking/elevator details, room-based item selection, and enhanced phone number validation

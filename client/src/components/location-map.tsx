@@ -130,13 +130,36 @@ export function LocationMap({ startLocation, endLocation, startCoords, endCoords
   }, [startLocation, endLocation, startCoords, endCoords]);
 
   const fetchRoute = async (start: { lat: number; lng: number }, end: { lat: number; lng: number }, map: L.Map) => {
-    try {
-      // Use OpenRouteService API (free with rate limits)
-      const response = await fetch(
-        `https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf6248d3c1d36c6c574aa1bbf04d63bb0fb0cf&start=${start.lng},${start.lat}&end=${end.lng},${end.lat}`
-      );
+    // Calculate straight-line distance for display
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 6371; // Earth's radius in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    };
 
-      if (response.ok) {
+    try {
+      // Try OpenRouteService API with better error handling
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      const response = await fetch(
+        `https://api.openrouteservice.org/v2/directions/driving-car?api_key=5b3ce3597851110001cf6248d3c1d36c6c574aa1bbf04d63bb0fb0cf&start=${start.lng},${start.lat}&end=${end.lng},${end.lat}`,
+        { 
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json'
+          }
+        }
+      ).catch(() => null); // Return null on fetch error
+
+      clearTimeout(timeoutId);
+
+      if (response && response.ok) {
         const data = await response.json();
         if (data.features && data.features[0]) {
           const coordinates = data.features[0].geometry.coordinates;
@@ -168,32 +191,45 @@ export function LocationMap({ startLocation, endLocation, startCoords, endCoords
             return div;
           };
           routeInfo.addTo(map);
+          return; // Successfully added route
         }
-      } else {
-        // Fallback: draw a simple straight line
-        const straightLine = L.polyline([
-          [start.lat, start.lng],
-          [end.lat, end.lng]
-        ], {
-          color: '#94a3b8',
-          weight: 2,
-          opacity: 0.6,
-          dashArray: '5, 10'
-        }).addTo(map);
       }
     } catch (error) {
-      console.error('Error fetching route:', error);
-      // Draw straight line as fallback
-      const straightLine = L.polyline([
-        [start.lat, start.lng],
-        [end.lat, end.lng]
-      ], {
-        color: '#94a3b8',
-        weight: 2,
-        opacity: 0.6,
-        dashArray: '5, 10'
-      }).addTo(map);
+      // API failed, use fallback
+      console.warn('Route API unavailable, using straight line');
     }
+
+    // Fallback: draw straight line with estimated distance
+    const distance = calculateDistance(start.lat, start.lng, end.lat, end.lng);
+    const estimatedDuration = Math.round(distance / 50 * 60); // Rough estimate: 50 km/h average
+
+    const straightLine = L.polyline([
+      [start.lat, start.lng],
+      [end.lat, end.lng]
+    ], {
+      color: '#94a3b8',
+      weight: 3,
+      opacity: 0.7,
+      dashArray: '8, 12'
+    }).addTo(map);
+
+    // Add estimated distance info
+    const routeInfo = L.control({ position: 'topright' });
+    routeInfo.onAdd = () => {
+      const div = L.DomUtil.create('div', 'route-info');
+      div.style.background = 'white';
+      div.style.padding = '8px';
+      div.style.borderRadius = '4px';
+      div.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+      div.innerHTML = `
+        <div style="font-size: 12px; font-weight: bold;">Estimated Route</div>
+        <div style="font-size: 11px;">Distance: ~${distance.toFixed(1)} km</div>
+        <div style="font-size: 11px;">Duration: ~${estimatedDuration} min</div>
+        <div style="font-size: 10px; color: #666;">Straight line estimate</div>
+      `;
+      return div;
+    };
+    routeInfo.addTo(map);
   };
 
   if (error) {
