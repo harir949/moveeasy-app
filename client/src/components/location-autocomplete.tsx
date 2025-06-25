@@ -27,6 +27,19 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
   const suggestionRefs = useRef<(HTMLDivElement | null)[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        try {
+          abortControllerRef.current.abort();
+        } catch (error) {
+          // Ignore abort errors during cleanup
+        }
+      }
+    };
+  }, []);
+
   const searchPlaces = useCallback(async (input: string) => {
     if (input.length < 3) {
       setSuggestions([]);
@@ -74,9 +87,15 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
                 'User-Agent': 'MoveEasy-Booking-App'
               }
             }
-          );
+          ).catch(error => {
+            // Handle fetch errors, especially AbortError
+            if (error.name === 'AbortError') {
+              return null; // Return null for aborted requests
+            }
+            throw error; // Re-throw other errors
+          });
 
-          if (response.ok) {
+          if (response && response.ok) {
             const results: NominatimResult[] = await response.json();
             allResults = [...allResults, ...results];
           }
@@ -126,13 +145,6 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
 
     return () => {
       clearTimeout(timeoutId);
-      if (abortControllerRef.current) {
-        try {
-          abortControllerRef.current.abort();
-        } catch (error) {
-          // Ignore abort errors during cleanup
-        }
-      }
     };
   }, [value, searchPlaces]);
 
