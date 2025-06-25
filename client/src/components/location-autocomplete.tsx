@@ -43,35 +43,61 @@ export function LocationAutocomplete({ value, onChange, placeholder, className }
     setIsLoading(true);
 
     try {
-      const params = new URLSearchParams({
-        q: input,
-        format: 'json',
-        addressdetails: '1',
-        limit: '8',
-        countrycodes: 'gr', // Restrict to Greece
-        'accept-language': 'el,en' // Greek and English
-      });
+      // Try multiple search strategies for better results
+      const searchQueries = [
+        input, // Original query
+      ];
 
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?${params}`,
-        {
-          signal: abortControllerRef.current.signal,
-          headers: {
-            'User-Agent': 'MoveEasy-Booking-App'
+      let allResults: NominatimResult[] = [];
+
+      for (const query of searchQueries) {
+        const params = new URLSearchParams({
+          q: query,
+          format: 'json',
+          addressdetails: '1',
+          limit: '8',
+          countrycodes: 'gr',
+          'accept-language': 'el,en',
+          dedupe: '1'
+        });
+
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/search?${params}`,
+            {
+              signal: abortControllerRef.current.signal,
+              headers: {
+                'User-Agent': 'MoveEasy-Booking-App'
+              }
+            }
+          );
+
+          if (response.ok) {
+            const results: NominatimResult[] = await response.json();
+            allResults = [...allResults, ...results];
           }
+        } catch (queryError) {
+          // Continue with next query if one fails
+          console.warn('Query failed:', query, queryError);
         }
-      );
 
-      if (!response.ok) {
-        throw new Error('Search failed');
+        // Add small delay between requests to be respectful to the API
+        if (searchQueries.indexOf(query) < searchQueries.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
 
-      const results: NominatimResult[] = await response.json();
-      
-      // Sort by importance and filter for better results
-      const sortedResults = results
-        .filter(result => result.importance > 0.3) // Filter out low importance results
-        .sort((a, b) => b.importance - a.importance);
+      // Remove duplicates based on place_id and sort by importance
+      const uniqueResults = Array.from(
+        new Map(allResults.map(item => [item.place_id, item])).values()
+      );
+
+      const sortedResults = uniqueResults
+        .filter(result => result.importance > 0.00001) // Very low threshold to include all relevant results
+        .sort((a, b) => b.importance - a.importance)
+        .slice(0, 10); // Limit final results
+
+      console.log('Search results for:', input, sortedResults);
 
       setSuggestions(sortedResults);
       setShowSuggestions(true);
